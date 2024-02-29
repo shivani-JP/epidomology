@@ -1,0 +1,1275 @@
+---
+title: "simulations_to_optim"
+author: "Shivani"
+date: "2023-01-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Epidemic model with reactive interventions:
+Please change the set path to the corresponding path to run the code:
+In order to run the below code use additional r scripts are needed
+```{r }
+source("/Users/Shivanijp/Documents/lancaster/Statistics_671/stats_671_optimalproject/Stoch_HH_model_functions_2019_v2.0.r") 
+# define default parameter values
+	param = list( 
+		number.of.replicates = 20,			# number of realisations
+		n=500,								# total population size
+		hh.size=4,							# average size of households
+		nI.0=2, nR.0=0,						# initial number of infected and recovered individuals
+		beta.hh=1.0, beta.not.hh=0.25,		# transmission rates within and between households
+		IncP = 2, InfP=3,					# incubation and infection periods		
+		p.sympt.inc=0,					# probability of being symptomatic during incubation period
+		p.sympt.inf=0,					# probability of being symptomatic during infectious period
+ 		max.quarantine.rate=5,				# maximum capacity for quarantining, number of individuals
+        trigger.cases = 100,				# number of diagnosed cases required to trigger mass vacc.
+        trigger.quarantine.queue = 10,		# size of queue required to trigger mass vacc.
+ 		max.vaccination.rate = 30			# maximum capacity for vaccinating, number of individuals
+	)
+
+```
+
+
+(A) How does household size affect the disease dynamics, in the absence of any control?
+
+You can turn control ‘off’ by setting the symptom diagnosis parameters, p.sympt.inc and p.sympt.inc, to zero. You will need to consider a range of different household sizes; the examples in model.R file are only a start. You can use the seq() function in R to define a range of household sizes to study. Do consider the most appropriate way to compare the results from each unique parameter suite.
+
+```{r}
+# define default parameter values
+	param_QA = list( 
+		number.of.replicates = 20,			# number of realisations
+		n=500,								# total population size
+		hh.size=4,							# average size of households
+		nI.0=2, nR.0=0,						# initial number of infected and recovered individuals
+		beta.hh=1.0, beta.not.hh=0.25,		# transmission rates within and between households
+		IncP = 2, InfP=3,					# incubation and infection periods		
+		p.sympt.inc=0,					# probability of being symptomatic during incubation period
+		p.sympt.inf=0,					# probability of being symptomatic during infectious period
+ 		max.quarantine.rate=5,				# maximum capacity for quarantining, number of individuals
+        trigger.cases = 100,				# number of diagnosed cases required to trigger mass vacc.
+        trigger.quarantine.queue = 10,		# size of queue required to trigger mass vacc.
+ 		max.vaccination.rate = 30			# maximum capacity for vaccinating, number of individuals
+	)
+```
+
+
+```{r}
+#infection for different household size with repl=20
+
+new.paramhhs_20 = param_QA
+	n.seq = seq(from = 2, to = 20, by = 1) # proposed household sizes
+	# make somewhere to store results
+	n.hhs_20 = data.frame( 
+		n.hhs = n.seq,
+		n.infected_val = NA,
+		n.infected.mean = NA,
+		n.infected.lower = NA,
+		n.infected.upper = NA,
+		n.peakinfectedmean = NA,
+		n.peakinfected.lower = NA,
+		n.peakinfected.upper = NA,
+		n.tpeakinfectedmean = NA,
+	  n.quarantined.mean = NA,
+		n.attack.rate = NA, # create a column to store attackrate
+		prop.repl.vacc = NA
+    
+	) 
+
+	for (k in 1:nrow(n.hhs_20))
+	{ 
+	  
+		new.paramhhs_20$hh.size = n.seq[k]
+	#	new.param$n=n.seq_pop[k]
+		new.paramhhs_20$n=1000 # popuation parameteris et to 1000
+		print(new.paramhhs_20$n)
+		results = simulation( new.paramhhs_20, plot.time.series=FALSE )
+		tmp = results$summary
+
+	
+		# find the mean and 95% confidence intervals for the total number actually infected
+			n.infected = rowSums( tmp[ ,c("E","I","R")] )
+			print(n.infected)
+			n.hhs_20$n.infected.mean[k] = mean( n.infected )
+		  n.hhs_20$n.infected.lower[k] = quantile( n.infected, 0.025 )
+		  n.hhs_20$n.infected.upper[k] = quantile( n.infected, 0.975 )
+		  n.hhs_20$n.final.size[k] = n.infected
+		  n.hhs_20$n.infected_val[k] = n.infected
+		  n.peaked = rowSums( tmp[ 'n.peak'])
+		  n.tpeak = rowSums( tmp[ 't.peak'])
+		  n.hhs_20$n.peakinfectedmean[k] = mean(n.peaked)
+		  n.hhs_20$n.peakinfected.lower[k] = quantile( n.peaked, 0.025 )
+		  n.hhs_20$n.peakinfected.upper[k] = quantile( n.peaked, 0.975 )
+		  n.hhs_20$n.tpeakinfectedmean[k] = mean(n.tpeak)
+		# n.hhwithin_30 the mean for the total number quarantined
+		  #find the mean for the total number quarantined
+		  n.quarantined = rowSums( tmp[ ,c("Q_S","Q_E","Q_I","Q_R") ] )
+		  n.hhs_20$n.quarantined.mean[k] = mean( n.quarantined )
+		  # calculation of attack rate
+		  n_susp = new.paramhhs_20$n-(new.paramhhs_20$nI.0 - new.paramhhs_20$nR.0)
+		  n.hhs_20$n.attack.rate[k] = (n.hhs_20$n.infected_val[k]/n_susp)*100
+		# find the proportion of replicates in which vaccination was triggered
+			number.triggered = nrow(tmp[tmp$MV.trigger==T, ])
+			n.hhs_20$prop.repl.vacc[k] = number.triggered/new.paramhhs_20$number.of.replicates
+	
+	}
+	
+n.hhs_20
+
+```
+
+
+
+```{r}
+# Plot the mean number of infected individuals for each household size
+ggplot(data = n.hhs_20, aes(x = n.hhs, y = n.infected.mean,color="red")) + 
+  geom_line(color='black') + 
+  geom_point(color='blue') + 
+  geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper), width = 0.2) + 
+  labs(x = "Household Size", y = "Mean Number of Infected Individuals")+
+  ggtitle("Effect of Household Size on Disease Dynamics (replicates = 20)")+
+  theme_bw()
+
+```
+
+
+```{r}
+
+# Plot the attack rate for each household size
+ggplot(n.hhs_20, aes(x=n.hhs, y=n.attack.rate, color="red")) + 
+  geom_line() + 
+  geom_point(color="blue") + 
+  labs(x="Household size", y="Attack rate ") + 
+  ggtitle("Effect of Household Size on attack rate (replicates = 20)") +
+  theme_bw()
+```
+
+```{r}
+ggplot(data = n.hhs_20, aes(x = n.hhs, y = n.peakinfectedmean)) + 
+  geom_line(color='blue') + 
+  geom_errorbar(aes(ymin = n.peakinfected.lower, ymax = n.peakinfected.upper), width = 0.2)+
+  labs(x = "Household Size", y = "Peak Infection Mean") +
+  ggtitle("Effect of Household Size on Peak Infection Mean (replicates = 20)") +
+  theme_bw()
+```
+
+
+```{r}
+#infection for different household size with repl=40
+
+new.param_40 = param_QA
+new.param_40$number.of.replicates= 40
+	n.seq = seq(from = 2, to = 20, by = 1) # proposed population sizes
+	# make somewhere to store results
+	n.hhs_40 = data.frame( 
+		n.hhs = n.seq,
+		n.infected_val = NA,
+		n.infected.mean = NA,
+		n.infected.lower = NA,
+		n.infected.upper = NA,
+		n.peakinfectedmean = NA,
+		n.peakinfected.lower = NA,
+		n.peakinfected.upper = NA,
+		n.tpeakinfectedmean = NA,
+	  n.quarantined.mean = NA,
+		n.attack.rate = NA,
+		prop.repl.vacc = NA
+	) 
+
+	for (k in 1:nrow(n.hhs_40))
+	{ 
+	  
+		new.param_40$hh.size = n.seq[k]
+		new.param_40$n=1000
+		print(new.param_40$n)
+		results = simulation( new.param_40, plot.time.series=FALSE )
+		tmp = results$summary
+
+	
+		# find the mean and 95% confidence intervals for the total number actually infected
+			n.infected = rowSums( tmp[ ,c("E","I","R")] )
+			print(n.infected)
+			n.hhs_40$n.infected.mean[k] = mean( n.infected )
+		  n.hhs_40$n.infected.lower[k] = quantile( n.infected, 0.025 )
+		  n.hhs_40$n.infected.upper[k] = quantile( n.infected, 0.975 )
+		  n.peaked = rowSums( tmp[ 'n.peak'])
+		  n.tpeak = rowSums( tmp[ 't.peak'])
+		  n.hhs_40$n.peakinfectedmean[k] = mean(n.peaked)
+		  n.hhs_40$n.peakinfected.lower[k] = quantile( n.peaked, 0.025 )
+		  n.hhs_40$n.peakinfected.upper[k] = quantile( n.peaked, 0.975 )
+		  n.hhs_40$n.tpeakinfectedmean[k] = mean(n.tpeak)
+		  n.hhs_40$n.infected_val[k] = n.infected
+		# find the mean for the total number quarantined
+		  n.quarantined = rowSums( tmp[ ,c("Q_S","Q_E","Q_I","Q_R") ] )
+		  n.hhs_40$n.quarantined.mean[k] = mean( n.quarantined )
+		   # calculation of attack rate
+		  n_susp = new.param_40$n-(new.param_40$nI.0-new.param_40$nR.0)
+		  n.hhs_40$n.attack.rate[k] = (n.hhs_40$n.infected_val[k]/n_susp)*100
+		# find the proportion of replicates in which vaccination was triggered
+			number.triggered = nrow(tmp[tmp$MV.trigger==T, ])
+			n.hhs_40$prop.repl.vacc[k] = number.triggered/new.param_40$number.of.replicates
+		# What else could you summarise about the replicates at this point?
+		
+	
+	}
+n.hhs_40
+
+```
+
+
+```{r}
+# Plot the mean number of infected individuals for each household size
+ggplot(data = n.hhs_40, aes(x = n.hhs, y = n.infected.mean,color="red")) + 
+  geom_line(color='black') + 
+  geom_point(color='blue') + 
+  geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper), width = 0.2) + 
+  labs(x = "Household Size", y = "Mean Number of Infected Individuals") +
+  ggtitle("Effect of Household Size on Disease Dynamics (replicates = 40)") +
+  theme_bw()
+
+```
+
+```{r}
+# Plot the attack rate for each household size
+ggplot(n.hhs_40, aes(x=n.hhs, y=n.attack.rate, color="red")) + 
+  geom_line() + 
+  geom_point(color="blue") + 
+  labs(x="Household size", y="Attack rate") + 
+  ggtitle("Effect of Household Size on attack rate (replicates = 40)") +
+  theme_bw()
+```
+
+
+```{r}
+ggplot(data = n.hhs_40, aes(x = n.hhs, y = n.peakinfectedmean)) + 
+  geom_line(color='blue') + 
+  geom_errorbar(aes(ymin = n.peakinfected.lower, ymax = n.peakinfected.upper), width = 0.2)+
+  labs(x = "Household Size", y =  "Peak Infection Mean") +
+  ggtitle("Effect of Household Size on Peak Infection Mean (replicates = 40)") +
+  theme_bw()
+```
+
+```{r}
+#infection for different household size with repl=60
+
+new.param_60 = param_QA
+new.param_60$number.of.replicates= 60
+	n.seq = seq(from = 2, to = 20, by = 1) # proposed population sizes
+	# make somewhere to store results
+	n.hhs_60 = data.frame( 
+		n.hhs = n.seq,
+		n.infected_val = NA,
+		n.infected.mean = NA,
+		n.infected.lower = NA,
+		n.infected.upper = NA,
+		n.peakinfectedmean = NA,
+		n.peakinfected.lower = NA,
+		n.peakinfected.upper = NA,
+		n.tpeakinfectedmean = NA,
+	  n.quarantined.mean = NA,
+		n.attack.rate = NA,
+		prop.repl.vacc = NA
+	) 
+
+	for (k in 1:nrow(n.hhs_60))
+	{ 
+	  
+		new.param_60$hh.size = n.seq[k]
+		new.param_60$n=1000
+		print(new.param_60$n)
+		results = simulation( new.param_60, plot.time.series=FALSE )
+		tmp = results$summary
+
+	
+		# find the mean and 95% confidence intervals for the total number actually infected
+			n.infected = rowSums( tmp[ ,c("E","I","R")] )
+			print(n.infected)
+			n.hhs_60$n.infected.mean[k] = mean( n.infected )
+		  n.hhs_60$n.infected.lower[k] = quantile( n.infected, 0.025 )
+		  n.hhs_60$n.infected.upper[k] = quantile( n.infected, 0.975 )
+		  n.peaked = rowSums( tmp[ 'n.peak'])
+		  n.tpeak = rowSums( tmp[ 't.peak'])
+		  n.hhs_60$n.peakinfectedmean[k] = mean(n.peaked)
+		  n.hhs_60$n.peakinfected.lower[k] = quantile( n.peaked, 0.025 )
+		  n.hhs_60$n.peakinfected.upper[k] = quantile( n.peaked, 0.975 )
+		  n.hhs_60$n.tpeakinfectedmean[k] = mean(n.tpeak)
+		  n.hhs_60$n.infected_val[k] = n.infected
+		# find the mean for the total number quarantined
+		  n.quarantined = rowSums( tmp[ ,c("Q_S","Q_E","Q_I","Q_R") ] )
+		  n.hhs_60$n.quarantined.mean[k] = mean( n.quarantined )
+		   # calculation of attack rate
+		  n_susp = new.param_60$n-(new.param_60$nI.0-new.param_60$nR.0)
+		  n.hhs_60$n.attack.rate[k] = (n.hhs_60$n.infected_val[k]/n_susp)*100
+		# find the proportion of replicates in which vaccination was triggered
+			number.triggered = nrow(tmp[tmp$MV.trigger==T, ])
+			n.hhs_60$prop.repl.vacc[k] = number.triggered/new.param_60$number.of.replicates
+	
+	}
+
+n.hhs_60
+```
+
+
+
+
+```{r}
+# Plot the mean number of infected individuals for each household size
+ggplot(data = n.hhs_60, aes(x = n.hhs, y = n.infected.mean,color="red")) + 
+  geom_line(color='black') + 
+  geom_point(color='blue') + 
+  geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper), width = 0.2) + 
+  labs(x = "Household Size", y = "Mean Number of Infected Individuals") +
+  ggtitle("Effect of Household Size on Disease Dynamics (replicates = 60)") +
+  theme_bw()
+```
+
+```{r}
+# Plot the attack rate for each household size
+ggplot(n.hhs_60, aes(x=n.hhs, y=n.attack.rate, color="red")) + 
+  geom_line() + 
+  geom_point(color="blue") + 
+  labs(x="Household size", y="Attack rate") + 
+  ggtitle("Effect of Household Size on attack rate (replicates = 60)") +
+  theme_bw()
+```
+
+```{r}
+ggplot(data = n.hhs_60, aes(x = n.hhs, y = n.peakinfectedmean)) + 
+  geom_line(color='blue') + 
+   geom_errorbar(aes(ymin = n.peakinfected.lower, ymax = n.peakinfected.upper), width = 0.2)+
+  labs(x = "Household Size", y = "Peak Infection Mean") +
+  ggtitle("Effect of Household Size on Peak Infection Mean (replicates = 60)") +
+  theme_bw()
+```
+
+```{r}
+#infection for different household size with repl=80
+
+new.param_80 = param_QA
+new.param_80$number.of.replicates= 80
+	n.seq = seq(from = 2, to = 20, by = 1) # proposed population sizes
+	# make somewhere to store results
+	n.hhs_80 = data.frame( 
+		n.hhs = n.seq,
+		n.infected_val = NA,
+		n.infected.mean = NA,
+		n.infected.lower = NA,
+		n.infected.upper = NA,
+		n.peakinfectedmean = NA,
+		n.peakinfected.lower = NA,
+		n.peakinfected.upper = NA,
+		n.tpeakinfectedmean = NA,
+	  n.quarantined.mean = NA,
+		n.attack.rate = NA,
+		prop.repl.vacc = NA
+	) 
+
+	for (k in 1:nrow(n.hhs_80))
+	{ 
+	  
+		new.param_80$hh.size = n.seq[k]
+		new.param_80$n=1000
+		print(new.param_80$n)
+		results = simulation( new.param_80, plot.time.series=FALSE )
+		tmp = results$summary
+
+	
+		# find the mean and 95% confidence intervals for the total number actually infected
+			n.infected = rowSums( tmp[ ,c("E","I","R")] )
+			print(n.infected)
+			n.hhs_80$n.infected.mean[k] = mean( n.infected )
+		  n.hhs_80$n.infected.lower[k] = quantile( n.infected, 0.025 )
+		  n.hhs_80$n.infected.upper[k] = quantile( n.infected, 0.975 )
+		  n.peaked = rowSums( tmp[ 'n.peak'])
+		  n.tpeak = rowSums( tmp[ 't.peak'])
+		  n.hhs_80$n.infected_val[k] = n.infected
+		  n.hhs_80$n.peakinfectedmean[k] = mean(n.peaked)
+		  n.hhs_80$n.peakinfected.lower[k] = quantile( n.peaked, 0.025 )
+		  n.hhs_80$n.peakinfected.upper[k] = quantile( n.peaked, 0.975 )
+		  n.hhs_80$n.tpeakinfectedmean[k] = mean(n.tpeak)
+		# find the mean for the total number quarantined
+		  n.quarantined = rowSums( tmp[ ,c("Q_S","Q_E","Q_I","Q_R") ] )
+		  n.hhs_80$n.quarantined.mean[k] = mean( n.quarantined )
+		   # calculation of attack rate
+		  n_susp = new.param_80$n-(new.param_80$nI.0-new.param_80$nR.0)
+		  n.hhs_80$n.attack.rate[k] = (n.hhs_80$n.infected_val[k]/n_susp)*100
+		# find the proportion of replicates in which vaccination was triggered
+			number.triggered = nrow(tmp[tmp$MV.trigger==T, ])
+			n.hhs_80$prop.repl.vacc[k] = number.triggered/new.param_80$number.of.replicates
+
+	}
+
+n.hhs_80
+
+```
+
+
+
+
+```{r}
+# Plot the mean number of infected individuals for each household size
+ggplot(data = n.hhs_80, aes(x = n.hhs, y = n.infected.mean,color="red")) + 
+  geom_line(color='black') + 
+  geom_point(color='blue') + 
+  geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper), width = 0.2) + 
+  labs(x = "Household Size", y = "Mean Number of Infected Individuals") +
+  ggtitle("Effect of Household Size on Disease Dynamics (replicates = 80)") +
+  theme_bw()
+```
+
+```{r}
+# Plot the attack rate for each household size
+ggplot(n.hhs_80, aes(x=n.hhs, y=n.attack.rate, color="red")) + 
+  geom_line() + 
+  geom_point(color="blue") + 
+  labs(x="Household size", y="Attack rate") + 
+  ggtitle("Effect of Household Size on attack rate (replicates = 80)") +
+  theme_bw()
+```
+
+```{r}
+ggplot(data = n.hhs_80, aes(x = n.hhs, y = n.peakinfectedmean)) + 
+  geom_line(color='blue') + 
+   geom_errorbar(aes(ymin = n.peakinfected.lower, ymax = n.peakinfected.upper), width = 0.2)+
+  labs(x = "Household Size", y = "Peak Infection Mean") +
+  ggtitle("Effect of Household Size on Peak Infection Mean (replicates = 80)") +
+  theme_bw()
+```
+
+```{r}
+#infection for different household size with repl=100
+
+new.param_100 = param_QA
+new.param_100$number.of.replicates= 100
+	n.seq = seq(from = 2, to = 20, by = 1) # proposed population sizes
+	 
+	# make somewhere to store results
+	n.hhs_100 = data.frame( 
+		n.hhs = n.seq,
+		n.infected_val = NA,
+		n.infected.mean = NA,
+		n.infected.lower = NA,
+		n.infected.upper = NA,
+		n.peakinfectedmean = NA,
+		n.peakinfected.lower = NA,
+		n.peakinfected.upper = NA,
+		n.tpeakinfectedmean = NA,
+	  n.quarantined.mean = NA,
+		n.attack.rate = NA,
+		prop.repl.vacc = NA
+	) 
+
+	for (k in 1:nrow(n.hhs_100))
+	{ 
+	  
+		new.param_100$hh.size = n.seq[k]
+		new.param_100$n=1000
+		print(new.param_80$n)
+		results = simulation( new.param_100, plot.time.series=FALSE )
+		tmp = results$summary
+
+	
+		# find the mean and 95% confidence intervals for the total number actually infected
+			n.infected = rowSums( tmp[ ,c("E","I","R")] )
+			print(n.infected)
+			n.hhs_100$n.infected.mean[k] = mean( n.infected )
+		  n.hhs_100$n.infected.lower[k] = quantile( n.infected, 0.025 )
+		  n.hhs_100$n.infected.upper[k] = quantile( n.infected, 0.975 )
+		  n.peaked = rowSums( tmp[ 'n.peak'])
+		  n.tpeak = rowSums( tmp[ 't.peak'])
+		  n.hhs_100$n.infected_val[k] = n.infected
+		  n.hhs_100$n.peakinfectedmean[k] = mean(n.peaked)
+		  n.hhs_100$n.peakinfected.lower[k] = quantile( n.peaked, 0.025 )
+		  n.hhs_100$n.peakinfected.upper[k] = quantile( n.peaked, 0.975 )
+		  n.hhs_100$n.tpeakinfectedmean[k] = mean(n.tpeak)
+		# find the mean for the total number quarantined
+		  n.quarantined = rowSums( tmp[ ,c("Q_S","Q_E","Q_I","Q_R") ] )
+		  n.hhs_100$n.quarantined.mean[k] = mean( n.quarantined )
+		   # calculation of attack rate
+		  n_susp = new.param_100$n-(new.param_100$nI.0-new.param_100$nR.0)
+		  n.hhs_100$n.attack.rate[k] = (n.hhs_100$n.infected_val[k]/n_susp)*100
+		# find the proportion of replicates in which vaccination was triggered
+			number.triggered = nrow(tmp[tmp$MV.trigger==T, ])
+			n.hhs_100$prop.repl.vacc[k] = number.triggered/new.param_100$number.of.replicates
+	}
+
+n.hhs_100
+
+```
+
+
+
+```{r}
+# Plot the mean number of infected individuals for each household size
+ggplot(data = n.hhs_100, aes(x = n.hhs, y = n.infected.mean,color="red")) + 
+  geom_line(color='black') + 
+  geom_point(color='blue') + 
+  geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper), width = 0.2) + 
+  labs(x = "Household Size", y = "Mean Number of Infected Individuals") +
+  ggtitle("Effect of Household Size on Disease Dynamics (replicates = 100)") +
+  theme_bw()
+```
+
+
+```{r}
+# Plot the attack rate for each household size
+ggplot(n.hhs_100, aes(x=n.hhs, y=n.attack.rate, color="red")) + 
+  geom_line() + 
+  geom_point(color="blue") + 
+  labs(x="Household size", y="Attack rate") + 
+  ggtitle("Effect of Household Size on attack rate (replicates = 100)") +
+  theme_bw()
+```
+
+```{r}
+ggplot(data = n.hhs_100, aes(x = n.hhs, y = n.peakinfectedmean)) + 
+  geom_line(color='blue') + 
+   geom_errorbar(aes(ymin = n.peakinfected.lower, ymax = n.peakinfected.upper), width = 0.2)+
+  labs(x = "Household Size", y = "Peak Infection Mean") +
+  ggtitle("Effect of Household Size on Peak Infection Mean (replicates = 100)") +
+  theme_bw()
+```
+creation of combine plots using gridExtra package, need to install the below packages to run the code
+install.packages('gridExtra')
+install.packages('grid')
+
+```{r}
+library(gridExtra)
+
+p1 <- ggplot(data = n.hhs_20, aes(x = n.hhs, y = n.infected.mean,color="red")) + 
+  geom_line(color='black') + 
+  geom_point(color='blue') + 
+  geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper), width = 0.2) + 
+  labs(x = "Household Size", y = "Mean Infected Individuals")+
+  ggtitle("replicates = 20")+
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 10), axis.title = element_text(size = 10))
+
+p2 <- ggplot(data = n.hhs_40, aes(x = n.hhs, y = n.infected.mean,color="red")) + 
+  geom_line(color='black') + 
+  geom_point(color='blue') + 
+  geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper), width = 0.2) + 
+  labs(x = "Household Size", y = "Mean Infected Individuals") +
+  ggtitle("replicates = 40") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 10), axis.title = element_text(size = 10))
+
+p3 <- ggplot(data = n.hhs_60, aes(x = n.hhs, y = n.infected.mean,color="red")) + 
+  geom_line(color='black') + 
+  geom_point(color='blue') + 
+  geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper), width = 0.2) + 
+  labs(x = "Household Size", y = "Mean Infected Individuals") +
+  ggtitle("replicates = 60") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 10), axis.title = element_text(size = 10))
+
+p4 <- ggplot(data = n.hhs_80, aes(x = n.hhs, y = n.infected.mean,color="red")) + 
+  geom_line(color='black') + 
+  geom_point(color='blue') + 
+  geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper), width = 0.2) + 
+  labs(x = "Household Size", y = "Mean Infected Individuals") +
+  ggtitle("replicates = 80") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 10), axis.title = element_text(size = 10))
+
+
+p5 <- ggplot(data = n.hhs_100, aes(x = n.hhs, y = n.infected.mean,color="red")) + 
+  geom_line(color='black') + 
+  geom_point(color='blue') + 
+  geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper), width = 0.2) + 
+  labs(x = "Household Size", y = "Mean Infected Individuals") +
+  ggtitle("replicates = 100") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 10), axis.title = element_text(size = 10))
+
+library(grid)
+
+# Create a text grob with larger font size
+txt <- textGrob("Effect of Household Size on Disease Dynamics", 
+                 gp = gpar(cex = 1.5),
+                 just = "center")
+
+# Use grid.arrange() to arrange the plots and add the text grob as the bottom label
+plot_grid <-grid.arrange(p1, p2, p3, p4, p5, 
+             nrow = 2, 
+             ncol = 3, 
+             bottom = txt)
+
+# Save the plot
+ggsave(filename = "meanInfected_QA.png", 
+       plot = plot_grid,
+       width = 10,height = 8
+       )
+```
+
+```{r}
+library(gridExtra)
+
+p1 <- ggplot(n.hhs_20, aes(x=n.hhs, y=n.attack.rate, color="red")) + 
+  geom_line() + 
+  geom_point(color="blue") + 
+  labs(x="Household size", y="Attack rate") + 
+  ggtitle("replicates = 20") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 15), axis.title = element_text(size = 15))
+
+p2 <- ggplot(n.hhs_40, aes(x=n.hhs, y=n.attack.rate, color="red")) + 
+  geom_line() + 
+  geom_point(color="blue") + 
+  labs(x="Household size", y="Attack rate") + 
+  ggtitle("replicates = 40") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 15), axis.title = element_text(size = 15))
+
+p3 <- ggplot(n.hhs_60, aes(x=n.hhs, y=n.attack.rate, color="red")) + 
+  geom_line() + 
+  geom_point(color="blue") + 
+  labs(x="Household size", y="Attack rate") + 
+  ggtitle("replicates = 60") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 15), axis.title = element_text(size = 15))
+
+p4 <- ggplot(n.hhs_80, aes(x=n.hhs, y=n.attack.rate, color="red")) + 
+  geom_line() + 
+  geom_point(color="blue") + 
+  labs(x="Household size", y="Attack rate") + 
+  ggtitle("replicates = 80") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 15), axis.title = element_text(size = 15))
+
+
+p5 <- ggplot(n.hhs_100, aes(x=n.hhs, y=n.attack.rate, color="red")) + 
+  geom_line() + 
+  geom_point(color="blue") + 
+  labs(x="Household size", y="Attack rate") + 
+  ggtitle("replicates = 100") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 15), axis.title = element_text(size = 15))
+
+
+library(grid)
+
+# Create a text grob with larger font size
+txt <- textGrob("Effect of Household Size on attack rate", 
+                 gp = gpar(cex = 1.5),
+                 just = "center")
+
+# Use grid.arrange() to arrange the plots and add the text grob as the bottom label
+plot_grid <-grid.arrange(p1, p2, p3, p4, p5, 
+             nrow = 2, 
+             ncol = 3, 
+             bottom = txt)
+
+# Save the plot
+ggsave(filename = "attackrate_QA.png", 
+       plot = plot_grid
+       )
+
+
+```
+
+
+
+```{r}
+library(gridExtra)
+
+p1 <- ggplot(data = n.hhs_20, aes(x = n.hhs, y = n.peakinfectedmean)) + 
+  geom_line(color='blue') + 
+   geom_errorbar(aes(ymin = n.peakinfected.lower, ymax = n.peakinfected.upper), width = 0.2)+
+  labs(x = "Household Size", y = "Peak Infection Mean") +
+  ggtitle("replicates = 20") +
+  theme_bw()
+  theme(plot.title = element_text(hjust = 0.5, size = 20), axis.title = element_text(size = 20))
+
+p2 <- ggplot(data = n.hhs_40, aes(x = n.hhs, y = n.peakinfectedmean)) + 
+  geom_line(color='blue') + 
+   geom_errorbar(aes(ymin = n.peakinfected.lower, ymax = n.peakinfected.upper), width = 0.2)+
+  labs(x = "Household Size", y = "Peak Infection Mean") +
+  ggtitle("replicates = 40") +
+  theme_bw()
+  theme(plot.title = element_text(hjust = 0.5, size = 20), axis.title = element_text(size = 20))
+
+p3 <- ggplot(data = n.hhs_60, aes(x = n.hhs, y = n.peakinfectedmean)) + 
+  geom_line(color='blue') + 
+   geom_errorbar(aes(ymin = n.peakinfected.lower, ymax = n.peakinfected.upper), width = 0.2)+
+  labs(x = "Household Size", y = "Peak Infection Mean") +
+  ggtitle("replicates = 60") +
+  theme_bw()
+  theme(plot.title = element_text(hjust = 0.5, size = 20), axis.title = element_text(size = 20))
+
+p4 <- ggplot(data = n.hhs_80, aes(x = n.hhs, y = n.peakinfectedmean)) + 
+  geom_line(color='blue') + 
+   geom_errorbar(aes(ymin = n.peakinfected.lower, ymax = n.peakinfected.upper), width = 0.2)+
+  labs(x = "Household Size", y = "Peak Infection Mean") +
+  ggtitle("replicates = 80") +
+  theme_bw()
+  theme(plot.title = element_text(hjust = 0.5, size = 20), axis.title = element_text(size = 20))
+
+
+p5 <- ggplot(data = n.hhs_100, aes(x = n.hhs, y = n.peakinfectedmean)) + 
+  geom_line(color='blue') + 
+   geom_errorbar(aes(ymin = n.peakinfected.lower, ymax = n.peakinfected.upper), width = 0.2)+
+  labs(x = "Household Size", y = "Peak Infection Mean") +
+  ggtitle("replicates = 100") +
+  theme_bw()
+  theme(plot.title = element_text(hjust = 0.5, size = 20), axis.title = element_text(size = 20))
+
+  library(grid)
+
+# Create a text grob with larger font size
+txt <- textGrob("Effect of Household Size on Peak Infection Mean", 
+                 gp = gpar(cex = 1.5),
+                 just = "center")
+
+# Use grid.arrange() to arrange the plots and add the text grob as the bottom label
+plot_grid <-grid.arrange(p1, p2, p3, p4, p5, 
+             nrow = 2, 
+             ncol = 3, 
+             bottom = txt)
+
+# Save the plot
+ggsave(filename = "peak_infected_QA.png", 
+       plot = plot_grid
+       )
+
+
+```
+
+
+(B) How does household size affect the efficacy of quarantining cases?
+
+For this, you will need to restore the diagnosis parameters to the default and keep the vaccination trigger disabled. 
+
+```{r}
+param_QB = list( 
+		number.of.replicates = 20,			# number of realisations
+		n=500,								# total population size
+		hh.size=4,							# average size of households
+		nI.0=2, nR.0=0,						# initial number of infected and recovered individuals
+		beta.hh=1.0, beta.not.hh=0.25,		# transmission rates within and between households
+		IncP = 2, InfP=3,					# incubation and infection periods		
+		p.sympt.inc=0.01,					# probability of being symptomatic during incubation period
+		p.sympt.inf=0.5,					# probability of being symptomatic during infectious period
+ 		max.quarantine.rate=5,				# maximum capacity for quarantining, number of individuals
+       trigger.cases = 1000,				# number of diagnosed cases required to trigger mass vacc,here it set to 1000 to stop the vaccination trigger
+        trigger.quarantine.queue = 1000,	# size of queue required to trigger mass vacc,here it set to 1000 to stop the vaccination trigger
+ 		max.vaccination.rate = 30			# maximum capacity for vaccinating, number of individuals
+	)
+```
+
+In the above parameter list trigger.cases and trigger.quarantine.queue is set to 1000 so that the following function:
+
+trigger.vaccination <- function( param, nc, n.waiting.quarantine, t )
+{ # this function determines if 'trigger' should be FALSE (not triggered yet) 
+  # or TRUE (start mass vaccination, depending on the logical conditions below.
+  trigger = FALSE
+  # Have too many people already been diagnosed with infection?
+  if ( nc>=param$trigger.cases ) 
+    { trigger = TRUE }
+  # Is the size of the queue for quarantine too big?
+  if ( n.waiting.quarantine>=param$trigger.quarantine.queue ) 
+  { trigger = TRUE }
+  trigger
+}
+
+As trigger never becomes true as new cases is less that trigger.cases and wait for quarantine queue is also less that trigger.quarantine.queue 
+
+```{r}
+# Checking for the effective quarantine cases
+new.param = param_QB
+	n.seq = seq(from = 2, to =20, by = 1) # proposed population sizes
+	# make somewhere to store results
+	n.QB= data.frame( 
+		n = n.seq,
+		
+		n.infected.mean = NA,
+		n.infected.lower = NA,
+		n.infected.upper = NA,
+		n.peakinfectedmean = NA,
+		n.peakinfected.lower = NA,
+		n.peakinfected.upper = NA,
+		n.tpeakinfectedmean = NA,
+		n.quarantined.mean = NA,
+		n.quarantined.lower = NA,
+	  n.quarantined.upper = NA,
+		n.Effectquarantined = NA, 
+		n.Effectquarantined.lower = NA,
+		n.Effectquarantined.upper = NA,
+		n.UnEffectquarantined = NA,
+		n.UnEffectquarantined.lower = NA,
+		n.UnEffectquarantined.upper = NA,
+	  prop.repl.vacc = NA
+	) 
+	for (k in 1:nrow(n.QB))
+	{ 
+		new.param$hh.size = n.seq[k]
+		new.param$n=1000
+		results = simulation( new.param, plot.time.series=FALSE )
+		tmp = results$summary
+	
+		# find the mean and 95% confidence intervals for the total number actually infected
+			n.infected = rowSums( tmp[ ,c("E","I","R")] )
+			print(n.infected)
+			print(mean( n.infected ))
+			n.QB$n.infected.mean[k] = mean( n.infected )
+			n.QB$n.infected.lower[k] = quantile( n.infected, 0.025 )
+			n.QB$n.infected.upper[k] = quantile( n.infected, 0.975 )
+			n.peaked = rowSums( tmp[ 'n.peak'])
+		  n.tpeak = rowSums( tmp[ 't.peak'])
+		  # find the peak mean and 95% confidence intervals for the total number actually infected
+		  n.QB$n.peakinfectedmean[k] = mean(n.peaked)
+		  n.QB$n.peakinfected.lower[k] = quantile( n.peaked, 0.025 )
+		  n.QB$n.peakinfected.upper[k] = quantile( n.peaked, 0.975 )
+		  n.QB$n.tpeakinfectedmean[k] = mean(n.tpeak)
+		# find the mean for the total number quarantined and CI
+			n.quarantined = rowSums( tmp[ ,c("Q_S","Q_E","Q_I","Q_R") ] )
+			n.QB$n.quarantined.mean[k] = mean( n.quarantined )
+			n.QB$n.quarantined.lower[k] = quantile( n.quarantined, 0.025 )
+			n.QB$n.quarantined.upper[k] = quantile( n.quarantined, 0.975 )
+			# find the mean for the total number Effective quarantined and CI
+			n.quarantinedE = rowSums( tmp[ ,c("Q_S","Q_E","Q_I") ] )
+			n.QB$n.Effectquarantined[k] = mean( n.quarantinedE )
+			n.QB$n.Effectquarantined.lower[k] = quantile( n.quarantinedE, 0.025 )
+			n.QB$n.Effectquarantined.upper[k] = quantile( n.quarantinedE, 0.975 )
+			# find the mean for the total number In Effective quarantined and CI
+			n.quarantinedUn = rowSums( tmp[ "Q_R" ] )
+			n.QB$n.UnEffectquarantined[k] = mean( n.quarantinedUn )
+			n.QB$n.UnEffectquarantined.lower[k] = quantile( n.quarantinedUn, 0.025 )
+			n.QB$n.UnEffectquarantined.upper[k] = quantile( n.quarantinedUn, 0.975 )
+		# find the proportion of replicates in which vaccination was triggered
+			number.triggered = nrow(tmp[tmp$MV.trigger==T, ])
+			n.QB$prop.repl.vacc[k] = number.triggered/new.param$number.of.replicates
+	}
+	n.QB
+
+```
+
+
+```{r}
+ggplot(data = n.QB, aes(x = n, y =n.infected.mean)) + 
+  geom_line(color='blue') + 
+   geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper),color = 'red', width = 0.2)+
+  labs(x = "Household Size", y = "Mean infected") +
+  theme_bw()
+```
+
+```{r}
+ggplot(data = n.QB, aes(x = n, y =n.Effectquarantined)) + 
+  geom_line(color='green') + 
+   geom_errorbar(aes(ymin = n.Effectquarantined.lower, ymax = n.Effectquarantined.upper),color = 'red', width = 0.2)+
+  labs(x = "Household Size", y = "Effective_Quarantine") +
+  theme_bw()
+```
+```{r}
+ggplot(data = n.QB, aes(x = n, y =n.UnEffectquarantined)) + 
+  geom_line(color='purple') + 
+   geom_errorbar(aes(ymin = n.UnEffectquarantined.lower, ymax = n.UnEffectquarantined.upper),color = 'red', width = 0.2)+
+  labs(x = "Household Size", y = "InEffective_Quarantine") +
+  theme_bw()
+```
+```{r}
+library(gridExtra)
+
+p1 <- ggplot(data = n.QB, aes(x = n, y =n.infected.mean)) + 
+  geom_line(color='blue') + 
+   geom_errorbar(aes(ymin = n.infected.lower, ymax = n.infected.upper),color = 'red', width = 0.2)+
+  labs(x = "Household Size", y = "Mean infected") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 10), axis.title = element_text(size = 10))
+
+p2 <- ggplot(data = n.QB, aes(x = n, y =n.Effectquarantined)) + 
+  geom_line(color='green') + 
+   geom_errorbar(aes(ymin = n.Effectquarantined.lower, ymax = n.Effectquarantined.upper),color = 'red', width = 0.2)+
+  labs(x = "Household Size", y = "Effective_Quarantine") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 10), axis.title = element_text(size = 10))
+
+p3 <- ggplot(data = n.QB, aes(x = n, y =n.UnEffectquarantined)) + 
+  geom_line(color='purple') + 
+   geom_errorbar(aes(ymin = n.UnEffectquarantined.lower, ymax = n.UnEffectquarantined.upper),color = 'red', width = 0.2)+
+  labs(x = "Household Size", y = "InEffective_Quarantine") +
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5, size = 10), axis.title = element_text(size = 10))
+
+library(grid)
+
+# Create a text grob with larger font size
+txt <- textGrob("Effect of Household Size on Disease Dynamics", 
+                 gp = gpar(cex = 1.5),
+                 just = "center")
+
+# Use grid.arrange() to arrange the plots and add the text grob as the bottom label
+plot_grid <-grid.arrange(p1, p2, p3, 
+             nrow = 2, 
+             ncol = 3, 
+             top = txt)
+
+# Save the plot
+ggsave(filename = "EffectiveQurantine_mean_QB.png", 
+       plot = plot_grid,
+       width = 10,height = 8
+       )
+```
+
+(C) What is the optimal control option for the default population and disease transmission parameters?
+
+How do the various control options impact disease dynamics? By varying the conditions for control implementation, you can change the outcome of infection and epidemics. For the initial transmission parameters given in Box 1, explore and compare the range of control options available (diagnosis & quarantine, mass vaccination). There are many combinations of regimes and control effect (parameter values) possible, so spend some time working out how you will identify an optimum from such choice. What are the key control alternatives to compare?
+
+How will you define the effectiveness of a control policy? What summary statistics of each realisation will you need? How can this best be presented as evidence?
+
+```{r}
+	param_QC = list( 
+		number.of.replicates = 20,			# number of realisations
+		n=500,								# total population size
+		hh.size=4,							# average size of households
+		nI.0=2, nR.0=0,						# initial number of infected and recovered individuals
+		beta.hh=1.0, beta.not.hh=0.25,		# transmission rates within and between households
+		IncP = 2, InfP=3,					# incubation and infection periods		
+		p.sympt.inc=0.01,					# probability of being symptomatic during incubation period
+		p.sympt.inf=0.5,					# probability of being symptomatic during infectious period
+ 		max.quarantine.rate=5,				# maximum capacity for quarantining, number of individuals
+        trigger.cases =100,				# number of diagnosed cases required to trigger mass vacc.
+        trigger.quarantine.queue = 10,		# size of queue required to trigger mass vacc.
+ 		max.vaccination.rate = 30			# maximum capacity for vaccinating, number of individuals
+	)
+```
+
+
+In order to find the optimal values random selected numbers between the range 0.009 and 0.09 set for p.sympt.inc and 0.09 and 0.9 is set for the p.sympt.inf changes where made to the trigger cases and trigger quarantine queue but that dint have any effect so that was not changed.Seed (123) is set to get the same results on every run as the p.sympt.inc and p.sympt.inf values are chosen randomly with the given range using 'runif' also attack rate and mortality rate is claulated which is also done for question D(4) additionally new columns where creatd to store the results for moratality, attackrate,new values of p.sympt.inc and p.sympt.inf and quarantine nad vaccination
+```{r}
+
+new.param = param_QC
+	n.seq = seq(from = 1, to =20, by = 1) # sample sizes
+	set.seed(123)
+	# make somewhere to store results
+	n.QC = data.frame( 
+		n = n.seq,
+		n.psympt_inc = NA,
+		n.psympt_inf = NA,
+		n.infected_val = NA,
+		n.infected.mean = NA,
+		n.infected.lower = NA,
+		n.infected.upper = NA,
+		n.peakinfectedmean = NA,
+		n.peakinfected.lower = NA,
+		n.peakinfected.upper = NA,
+		n.tpeakinfectedmean = NA,
+		n.quarantined.mean = NA,
+		n.quarantined.lower = NA,
+	  n.quarantined.upper = NA,
+		n.Effectquarantined = NA,
+		n.Effectquarantined.lower = NA,
+		n.Effectquarantined.upper = NA,
+		n.UnEffectquarantined = NA,
+		n.UnEffectquarantined.lower = NA,
+		n.UnEffectquarantined.upper = NA,
+		prop.repl.vacc = NA,
+		n.vaccinated.mean = NA,
+		n.vaccinated.lower = NA,
+	  n.vaccinated.upper = NA,
+		n.attack.rate = NA,
+		n.Effectivevaccinated.mean = NA,
+		n.Effectivevaccinated.lower = NA,
+		n.Effectivevaccinated.upper = NA,
+		n.InEffectivevaccinated.mean = NA,
+		n.InEffectivevaccinated.lower = NA,
+		n.InEffectivevaccinated.upper = NA,
+		n.deaths.inf.mean = NA,
+		n.deaths.vacc.mean=NA,
+		n.Effectivedeaths.vacc.mean = NA,
+		n.InEffectivedeaths.vacc.mean=NA
+		
+	)
+
+	
+	for (k in 1:nrow(n.QC))
+	{ 
+	
+		new.param$n=1000
+		new.param$p.sympt.inc = runif(1, min = 0.009, max = 0.09)
+		new.param$p.sympt.inf= runif(1, min = 0.09, max = 0.9)
+		results = simulation( new.param, plot.time.series=FALSE )
+		tmp = results$summary
+	
+		# find the mean and 95% confidence intervals for the total number actually infected
+			n.infected = rowSums( tmp[ ,c("E","I","R")] )
+			print(n.infected)
+			n.QC$n.psympt_inc[k]=new.param$p.sympt.inc
+			n.QC$n.psympt_inf[k]=new.param$p.sympt.inf
+			n_susp = new.param$n-(new.param$nI.0-new.param$nI.0)
+			n.QC$n.infected_val[k] = n.infected
+			#Calculation of attack rate
+			n_susp = new.param$n-(new.param$nI.0-new.param$nR.0)
+			n.QC$n.attack.rate[k] = (n.QC$n.infected_val[k]/n_susp)*100
+			n.QC$n.infected.mean[k] = mean( n.infected )
+			n.QC$n.infected.lower[k] = quantile( n.infected, 0.025 )
+			n.QC$n.infected.upper[k] = quantile( n.infected, 0.975 )
+			n.peaked = rowSums( tmp[ 'n.peak'])
+		  n.tpeak = rowSums( tmp[ 't.peak'])
+		  # find the peak mean with CI
+		  n.QC$n.peakinfectedmean[k] = mean(n.peaked)
+		  n.QC$n.peakinfected.lower[k] = quantile( n.peaked, 0.025 )
+		  n.QC$n.peakinfected.upper[k] = quantile( n.peaked, 0.975 )
+		  n.QC$n.tpeakinfectedmean[k] = mean(n.tpeak)
+		  
+		# find the mean for the total number quarantined with CI
+			n.quarantined = rowSums( tmp[ ,c("Q_S","Q_E","Q_I","Q_R") ] )
+			n.QC$n.quarantined.mean[k] = mean( n.quarantined )
+			n.QC$n.quarantined.lower[k] = quantile( n.quarantined, 0.025 )
+			n.QC$n.quarantined.upper[k] = quantile( n.quarantined, 0.975 )
+			n.quarantinedE = rowSums( tmp[ ,c("Q_S","Q_E","Q_I") ] )
+			# find the mean for the total number Effective quarantined with CI
+			n.QC$n.Effectquarantined[k] = mean( n.quarantinedE )
+			n.QC$n.Effectquarantined.lower[k] = quantile( n.quarantinedE, 0.025 )
+			n.QC$n.Effectquarantined.upper[k] = quantile( n.quarantinedE, 0.975 )
+			# find the mean for the total number In Effective quarantined with CI
+			n.quarantinedUn = rowSums( tmp[ "Q_R" ] )
+			n.QC$n.UnEffectquarantined[k] = mean( n.quarantinedUn )
+			n.QC$n.UnEffectquarantined.lower[k] = quantile( n.quarantinedUn, 0.025 )
+			n.QC$n.UnEffectquarantined.upper[k] = quantile( n.quarantinedUn, 0.975 )
+		# find the proportion of replicates in which vaccination was triggered
+			number.triggered = nrow(tmp[tmp$MV.trigger==T, ])
+			n.QC$prop.repl.vacc[k] = number.triggered/new.param$number.of.replicates
+			# find the mean for the total number vaccination with CI
+			n.vaccinated = rowSums(tmp[ ,c("V_S","V_E","V_I") ])
+      n.QC$n.vaccinated.mean[k] = mean(n.vaccinated)
+      n.QC$n.vaccinated.lower[k] = quantile( n.vaccinated, 0.025 )
+			n.QC$n.vaccinated.upper[k] = quantile( n.vaccinated, 0.975 )
+			# find the mean for the total number Effective vaccination with CI
+			n.vaccinatedE = rowSums( tmp["V_S" ] )
+			n.QC$n.Effectivevaccinated.mean[k] = mean( n.vaccinatedE )
+			n.QC$n.Effectivevaccinated.lower[k] = quantile( n.vaccinatedE, 0.025 )
+			n.QC$n.Effectivevaccinated.upper[k] = quantile( n.vaccinatedE, 0.975 )
+				# find the mean for the total number In Effective vaccination with CI
+			n.vaccinatedUn = rowSums( tmp[ ,c("V_E","V_I","V_R") ] )
+			n.QC$n.InEffectivevaccinated.mean[k] = mean( n.vaccinatedUn )
+			n.QC$n.InEffectivevaccinated.lower[k] = quantile( n.vaccinatedUn, 0.025 )
+			n.QC$n.InEffectivevaccinated.upper[k] = quantile( n.vaccinatedUn, 0.975 )
+			# Calculation of the death due to vaccination
+      p.death.due.to.vaccination = 0.01 #  probability of death due to vaccination
+      n.deaths.mean = n.QC$n.vaccinated.mean[k] * p.death.due.to.vaccination
+      n.QC$n.deaths.vacc.mean[k] = n.deaths.mean
+      # Calculation of the death due to Effective and In effective vaccination
+      n.Edeaths.mean = n.QC$n.Effectivevaccinated.mean[k] * p.death.due.to.vaccination
+      n.Indeaths.mean = n.QC$n.InEffectivevaccinated.mean[k] * p.death.due.to.vaccination
+      n.QC$n.deaths.vacc.mean[k] = n.deaths.mean
+      n.QC$n.Effectivedeaths.vacc.mean[k] = n.Edeaths.mean
+		  n.QC$n.InEffectivedeaths.vacc.mean[k]=n.Indeaths.mean
+		  # Calculation of the death due to infection
+      p.death.inf = 0.35 # probability of death due to infection
+      n.deaths.inf = n.QC$n.infected.mean[k] * p.death.inf
+      n.QC$n.deaths.inf.mean[k] = n.deaths.inf
+	}
+	n.QC
+
+```
+
+
+(D) How does a mortality cost affect the control options?
+
+Assume that 35% of all individuals infected develop a long-term health condition resulting in early death (this occurs on a longer time scale than the epidemics, so does not affect transmission dynamics). Also, assume that for vaccinated individuals there is a 0.01 probability they will suffer a fatal adverse reaction to the vaccine (which also occurs in the longer-term, so does not affect the transmission dynamics). Thus 1 in 100 vaccinated individuals will (on average) suffer the adverse reaction. For each realisation, therefore, there is now a mortality cost caused by infection and by vaccination.
+
+Determine how the total number of deaths from these two sources changes as the control parameters change, and identify an optimal control which minimises the number of resulting deaths.
+
+
+```{r}
+param_QD = list( 
+		number.of.replicates = 20,			# number of realisations
+		n=500,								# total population size
+		hh.size=4,							# average size of households
+		nI.0=2, nR.0=0,						# initial number of infected and recovered individuals
+		beta.hh=1.0, beta.not.hh=0.25,		# transmission rates within and between households
+		IncP = 2, InfP=3,					# incubation and infection periods		
+		p.sympt.inc=0.01,					# probability of being symptomatic during incubation period
+		p.sympt.inf=0.5,					# probability of being symptomatic during infectious period
+ 		max.quarantine.rate=5,				# maximum capacity for quarantining, number of individuals
+        trigger.cases = 100,				# number of diagnosed cases required to trigger mass vacc.
+        trigger.quarantine.queue = 10,		# size of queue required to trigger mass vacc.
+ 		max.vaccination.rate = 30			# maximum capacity for vaccinating, number of individuals
+	)
+```
+
+
+In order to find the optimal values random selected numbers between the range 0.009 and 0.09 set for p.sympt.inc and 0.09 and 0.9 is set for the p.sympt.inf changes where made to the trigger cases and trigger quarantine queue but that dint have any effect so that was not changed.Seed (123) is set to get the same results on every run as the p.sympt.inc and p.sympt.inf values are chosen randomly with the given range using 'runif' also attack rate and mortality rate is claulated which is also done for question D(4) additionally new columns where creatd to store the results for moratality, attackrate,new values of p.sympt.inc and p.sympt.inf and quarantine nad vaccination
+
+```{r}
+new.param = param_QD
+	n.seq = seq(from = 1, to =20, by = 1) # proposed population sizes
+	# make somewhere to store results
+	set.seed(123)
+	n.QD2 = data.frame( 
+		n = n.seq,
+		n.psympt_inc = NA,
+		n.psympt_inf = NA,
+	#	n.trigger.cases = NA,
+	#	n.trigger.quarantine.queue = NA,
+		n.infected_val = NA,
+		n.infected.mean = NA,
+		n.infected.lower = NA,
+		n.infected.upper = NA,
+		n.peakinfectedmean = NA,
+		n.peakinfected.lower = NA,
+		n.peakinfected.upper = NA,
+		n.tpeakinfectedmean = NA,
+		n.quarantined.mean = NA,
+		n.quarantined.lower = NA,
+	  n.quarantined.upper = NA,
+		n.Effectquarantined = NA,
+		n.Effectquarantined.lower = NA,
+		n.Effectquarantined.upper = NA,
+		n.UnEffectquarantined = NA,
+		n.UnEffectquarantined.lower = NA,
+		n.UnEffectquarantined.upper = NA,
+		prop.repl.vacc = NA,
+		n.vaccinated.mean = NA,
+		n.vaccinated.lower = NA,
+	  n.vaccinated.upper = NA,
+		n.attack.rate = NA,
+		n.Effectivevaccinated.mean = NA,
+		n.Effectivevaccinated.lower = NA,
+		n.Effectivevaccinated.upper = NA,
+		n.InEffectivevaccinated.mean = NA,
+		n.InEffectivevaccinated.lower = NA,
+		n.InEffectivevaccinated.upper = NA,
+		n.deaths.inf.mean = NA,
+		n.deaths.vacc.mean=NA,
+		n.Effectivedeaths.vacc.mean = NA,
+		n.InEffectivedeaths.vacc.mean=NA
+		
+	)
+
+	
+	for (k in 1:nrow(n.QD2))
+	{ 
+	
+		new.param$n=1000
+		new.param$p.sympt.inc = runif(1, min = 0.009, max = 0.09)
+		new.param$p.sympt.inf=runif(1, min = 0.09, max = 0.9)
+		#new.param$trigger.cases=runif(1, min = 1000, max = 1500)
+	#	new.param$trigger.quarantine.queue=runif(1, min = 1000, max = 1500)
+		results = simulation( new.param, plot.time.series=FALSE )
+		tmp = results$summary
+	
+		# find the mean and 95% confidence intervals for the total number actually infected
+			n.infected = rowSums( tmp[ ,c("E","I","R")] )
+			print(n.infected)
+			n.QD2$n.psympt_inc[k]=new.param$p.sympt.inc
+			n.QD2$n.psympt_inf[k]=new.param$p.sympt.inf
+		#	n.QD2$n.trigger.cases[k]=	new.param$trigger.cases # no effect hence commented
+		 # n.QD2$n.trigger.quarantine.queue[k]=new.param$trigger.quarantine.queue # no effect hence commented
+		  #Calculation of attack rate
+			n_susp = new.param$n-(new.param$nI.0-new.param$nR.0)
+			n.QD2$n.infected_val[k] = n.infected
+			print(mean( n.infected ))
+			n.QD2$n.attack.rate[k] = (n.QD2$n.infected_val[k]/n_susp)*100
+			n.QD2$n.infected.mean[k] = mean( n.infected )
+			n.QD2$n.infected.lower[k] = quantile( n.infected, 0.025 )
+			n.QD2$n.infected.upper[k] = quantile( n.infected, 0.975 )
+			n.peaked = rowSums( tmp[ 'n.peak'])
+		  n.tpeak = rowSums( tmp[ 't.peak'])
+		  # find the peak mean with CI
+		  n.QD2$n.peakinfectedmean[k] = mean(n.peaked)
+		  n.QD2$n.peakinfected.lower[k] = quantile( n.peaked, 0.025 )
+		  n.QD2$n.peakinfected.upper[k] = quantile( n.peaked, 0.975 )
+		  n.QD2$n.tpeakinfectedmean[k] = mean(n.tpeak)
+		# find the mean for the total number quarantined with CI
+			n.quarantined = rowSums( tmp[ ,c("Q_S","Q_E","Q_I","Q_R") ] )
+			n.QD2$n.quarantined.mean[k] = mean( n.quarantined )
+			n.QD2$n.quarantined.lower[k] = quantile( n.quarantined, 0.025 )
+			n.QD2$n.quarantined.upper[k] = quantile( n.quarantined, 0.975 )
+			# find the mean for the total number Effective quarantined with CI
+			n.quarantinedE = rowSums( tmp[ ,c("Q_S","Q_E","Q_I") ] )
+			n.QD2$n.Effectquarantined[k] = mean( n.quarantinedE )
+			n.QD2$n.Effectquarantined.lower[k] = quantile( n.quarantinedE, 0.025 )
+			n.QD2$n.Effectquarantined.upper[k] = quantile( n.quarantinedE, 0.975 )
+				# find the mean for the total number In Effective quarantined with CI
+			n.quarantinedUn = rowSums( tmp[ "Q_R" ] )
+			n.QD2$n.UnEffectquarantined[k] = mean( n.quarantinedUn )
+			n.QD2$n.UnEffectquarantined.lower[k] = quantile( n.quarantinedUn, 0.025 )
+			n.QD2$n.UnEffectquarantined.upper[k] = quantile( n.quarantinedUn, 0.975 )
+		# find the proportion of replicates in which vaccination was triggered
+			number.triggered = nrow(tmp[tmp$MV.trigger==T, ])
+			n.QD2$prop.repl.vacc[k] = number.triggered/new.param$number.of.replicates
+			# find the mean for the total number vaccination with CI
+			n.vaccinated = rowSums(tmp[ ,c("V_S","V_E","V_I") ])
+      n.QD2$n.vaccinated.mean[k] = mean(n.vaccinated)
+      n.QD2$n.vaccinated.lower[k] = quantile( n.vaccinated, 0.025 )
+			n.QD2$n.vaccinated.upper[k] = quantile( n.vaccinated, 0.975 )
+			# find the mean for the total number Effective vaccination with CI
+			n.vaccinatedE = rowSums( tmp["V_S" ] )
+			n.QD2$n.Effectivevaccinated.mean[k] = mean( n.vaccinatedE )
+			n.QD2$n.Effectivevaccinated.lower[k] = quantile( n.vaccinatedE, 0.025 )
+			n.QD2$n.Effectivevaccinated.upper[k] = quantile( n.vaccinatedE, 0.975 )
+			# find the mean for the total number In Effective vaccination with CI
+			n.vaccinatedUn = rowSums( tmp[,c("V_E","V_I","V_R") ] )
+			n.QD2$n.InEffectivevaccinated.mean[k] = mean( n.vaccinatedUn )
+			n.QD2$n.InEffectivevaccinated.lower[k] = quantile( n.vaccinatedUn, 0.025 )
+			n.QD2$n.InEffectivevaccinated.upper[k] = quantile( n.vaccinatedUn, 0.975 )
+			# Calculation of the death due to vaccination
+      p.death.due.to.vaccination = 0.01 #  probability of death due to vaccination
+      n.deaths.mean = n.QC$n.vaccinated.mean[k] * p.death.due.to.vaccination
+      n.QD2$n.deaths.vacc.mean[k] = n.deaths.mean
+       # Calculation of the death due to Effective and In effective vaccination
+      n.Edeaths.mean = n.QC$n.Effectivevaccinated.mean[k] * p.death.due.to.vaccination
+      n.Indeaths.mean = n.QC$n.InEffectivevaccinated.mean[k] * p.death.due.to.vaccination
+      n.QD2$n.deaths.vacc.mean[k] = n.deaths.mean
+      n.QD2$n.Effectivedeaths.vacc.mean[k] = n.Edeaths.mean
+		  n.QD2$n.InEffectivedeaths.vacc.mean[k]=n.Indeaths.mean
+		  # Calculation of the death due to infection
+      p.death.inf = 0.35 # probability of death due to infection
+      n.deaths.inf = n.QC$n.infected.mean[k] * p.death.inf
+      n.QD2$n.deaths.inf.mean[k] = n.deaths.inf
+
+
+
+	}
+	n.QD2
+```
+
+writing the results in csv format after sorting based on least attack rate with required columns
+```{r}
+results_sorted <- n.QD2[order(n.QD2$n.attack.rate),]
+
+write.csv(results_sorted,"C_D_results_sorted.csv")
+
+final_results <- subset(results_sorted, select = c('n.psympt_inc', 'n.psympt_inf','n.attack.rate','n.infected.mean','n.quarantined.mean','n.Effectquarantined','n.UnEffectquarantined','n.vaccinated.mean','n.Effectivevaccinated.mean',
+'n.InEffectivevaccinated.mean','n.deaths.inf.mean','n.deaths.vacc.mean'))
+```
+                                                
+writing the results in csv format 
+```{r}
+final_results
+write.csv(final_results,"C_D_results.csv")
+```
+```{r}
+final_results1 <- subset(results_sorted, select = c('n.psympt_inc', 'n.psympt_inf','n.attack.rate','n.infected.mean','n.quarantined.mean','n.vaccinated.mean','n.deaths.inf.mean','n.deaths.vacc.mean'))
+```
+
+writing the results in csv format after sorting based on least attack rate with required columns after renamimg
+```{r}
+names(final_results1)[3] ="attack_rate"
+names(final_results1)[4] ="infected_mean"
+names(final_results1)[5] ="quarantined_mean"
+names(final_results1)[6] ="vaccinated_mean"
+names(final_results1)[7] ="deaths_infectedMean"
+names(final_results1)[8] ="deaths_vaccinatedMean"
+
+```
+
+Saving the results in csv format
+```{r}
+results_firstfive = head(final_results1)
+write.csv(results_firstfive,"C_D_results_5.csv")
+```
+
+showing the results in table format
+```{r}
+library(kableExtra)
+kable(head(final_results1))
+```
+
+
+
+
