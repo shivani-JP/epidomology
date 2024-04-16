@@ -1,4 +1,4 @@
-# Introduction: Understanding Disease Dynamics with the SEIR Model
+# Understanding Disease Dynamics with the SEIR Model
 
 In this project, we delve into the dynamics of infectious disease transmission and the effectiveness of control strategies using the SEIR model. Specifically, we explore how household size influences disease dynamics and the impact of control approaches such as increased diagnostic rates, case isolation, and mass immunization.
 
