@@ -10,7 +10,7 @@ Our study reveals that household size significantly affects disease spread, alte
 
 Additionally, we analyze the effects of control methods like mass vaccination programs, quarantines, and mortality due to infection and vaccination. By assessing various household sizes, transmission rates, and symptom development probabilities, we determine that balancing mortality costs between infection and vaccination is the optimal strategy for reducing fatalities. 
 
-In conclusion, this study underscores the importance of mathematical modeling in understanding infectious disease transmission dynamics and evaluating control strategies. The SEIR model serves as a valuable tool for exploring control options and parameters, providing insights that can inform decision-making in public health and guide the development of effective control techniques. Stay tuned for further insights and findings from our analysis.
+In conclusion, this study underscores the importance of mathematical modeling in understanding infectious disease transmission dynamics and evaluating control strategies. The SEIR model serves as a valuable tool for exploring control options and parameters, providing insights that can inform decision-making in public health and guide the development of effective control techniques. 
 
 <img width="468" alt="Screenshot 2024-04-16 at 7 07 12 pm" src="https://github.com/shivani-JP/epidomology/assets/85876559/351be091-f12f-4afe-aa0d-eb8bb84d0c20">
 <img width="440" alt="Screenshot 2024-04-16 at 7 07 18 pm" src="https://github.com/shivani-JP/epidomology/assets/85876559/2182dd85-8e40-4604-b4bb-a945da76e356">
